@@ -8,7 +8,7 @@
     $env:CURLSMS_API_KEY unless -ApiKey is given.
 
 .EXAMPLE
-    $env:CURLSMS_API_KEY = 'cs_test_…'
+    $env:CURLSMS_API_KEY = 'cs_test_...'
     ./Send-Sms.ps1 -Receiver '+4915123456789' -Text 'Hello from PowerShell'
 #>
 [CmdletBinding()]

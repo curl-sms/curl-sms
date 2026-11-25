@@ -16,15 +16,15 @@ jobs:
     name: Shell (shellcheck)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: shellcheck examples/curl/*.sh examples/bash/send-sms recipes/cron/*.sh
 
   python:
     name: Python (ruff, compile)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - run: pip install ruff
@@ -36,8 +36,8 @@ jobs:
     name: Node.js (syntax)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: for f in examples/node/*.mjs examples/webhooks/*.mjs; do node --check "$f"; done
@@ -49,8 +49,8 @@ jobs:
       run:
         working-directory: examples/go
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: stable
       - run: test -z "$(gofmt -l .)"
@@ -61,14 +61,14 @@ jobs:
     name: PHP (lint)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: php -l examples/php/send_sms.php
 
   powershell:
     name: PowerShell (PSScriptAnalyzer)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - shell: pwsh
         run: |
           Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
@@ -80,8 +80,8 @@ jobs:
     name: Config files (OpenAPI, YAML, JSON, workflows)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: OpenAPI
@@ -105,7 +105,7 @@ jobs:
     env:
       CURLSMS_API_KEY: ${{ secrets.CURLSMS_TEST_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: env.CURLSMS_API_KEY != ''
       - name: curl
         if: env.CURLSMS_API_KEY != ''
