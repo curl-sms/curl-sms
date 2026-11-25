@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 5 * * 1" # weekly, catches API drift
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shell:
+    name: Shell (shellcheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck examples/curl/*.sh examples/bash/send-sms recipes/cron/*.sh
+
+  python:
+    name: Python (ruff, compile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install ruff
+      - run: ruff check examples
+      - run: ruff format --check --diff examples
+      - run: python -m py_compile examples/python/*.py examples/webhooks/*.py
+
+  node:
+    name: Node.js (syntax)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: for f in examples/node/*.mjs examples/webhooks/*.mjs; do node --check "$f"; done
+
+  go:
+    name: Go (gofmt, vet, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/go
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: test -z "$(gofmt -l .)"
+      - run: go vet ./...
+      - run: go build ./...
+
+  php:
+    name: PHP (lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: php -l examples/php/send_sms.php
+
+  powershell:
+    name: PowerShell (PSScriptAnalyzer)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          $issues = Invoke-ScriptAnalyzer -Path examples/powershell -Recurse -Severity Warning,Error
+          $issues | Format-Table -AutoSize
+          if ($issues) { exit 1 }
+
+  config:
+    name: Config files (OpenAPI, YAML, JSON, workflows)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: OpenAPI
+        run: npx --yes @redocly/cli@1 lint openapi.yaml
+      - name: YAML
+        run: |
+          pip install yamllint
+          yamllint -c .yamllint.yml recipes .github
+      - name: JSON
+        run: python -m json.tool recipes/n8n/send-sms.workflow.json > /dev/null
+      - name: Workflows (actionlint)
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -color .github/workflows/*.yml recipes/github-actions/*.yml
+
+  smoke:
+    name: Live smoke test (test key)
+    needs: [shell, python, node]
+    runs-on: ubuntu-latest
+    # Runs only where the CURLSMS_TEST_KEY secret exists (not on forks). Test keys never send a real SMS.
+    env:
+      CURLSMS_API_KEY: ${{ secrets.CURLSMS_TEST_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.CURLSMS_API_KEY != ''
+      - name: curl
+        if: env.CURLSMS_API_KEY != ''
+        run: |
+          examples/curl/send.sh | tee out.json
+          python3 -c "import json; assert json.load(open('out.json'))['mode'] == 'test'"
+          examples/curl/estimate.sh
+          examples/curl/account.sh
+      - name: Python
+        if: env.CURLSMS_API_KEY != ''
+        run: python examples/python/send_sms.py
+      - name: Node.js
+        if: env.CURLSMS_API_KEY != ''
+        run: node examples/node/send-sms.mjs
+      - name: Bash tool
+        if: env.CURLSMS_API_KEY != ''
+        run: examples/bash/send-sms +4915123456789 "CI smoke test"

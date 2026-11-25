@@ -1,0 +1,67 @@
+{
+  "name": "Send SMS with curl-sms",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "0b2b5d1e-6a1f-4c55-9a43-2f3d8f1c7a01",
+      "name": "When clicking 'Test workflow'",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5f0e9c3a-1d2b-4e8f-9a6c-3b7d2e1f0a11",
+              "name": "message",
+              "value": "Hello from n8n",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7c4a2e9b-3f1d-4b6a-8e2c-9d5f1a3b7c02",
+      "name": "Message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://curl-sms.com/api/sms/send",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Idempotency-Key", "value": "={{ $execution.id }}" },
+            { "name": "Accept-Language", "value": "en" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ receiver: '+4915123456789', body: $json.message }) }}",
+        "options": {}
+      },
+      "id": "a91e6d3c-2b4f-4c7e-8d1a-6f3b9c2e5d03",
+      "name": "Send SMS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    }
+  ],
+  "connections": {
+    "When clicking 'Test workflow'": {
+      "main": [[{ "node": "Message", "type": "main", "index": 0 }]]
+    },
+    "Message": {
+      "main": [[{ "node": "Send SMS", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

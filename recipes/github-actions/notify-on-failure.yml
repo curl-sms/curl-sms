@@ -1,0 +1,26 @@
+# .github/workflows/deploy.yml – SMS when the deploy fails.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy
+        run: ./deploy.sh
+
+      - name: SMS on failure
+        if: failure()
+        uses: curl-sms/send-sms@v1
+        with:
+          api-key: ${{ secrets.CURLSMS_API_KEY }}
+          receiver: "+4915123456789"
+          body: "Deploy of ${{ github.repository }} failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

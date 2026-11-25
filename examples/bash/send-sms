@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# send-sms: a tiny command-line tool for curl-sms.
+#
+#   send-sms +4915123456789 "Backup finished"
+#   echo "Disk almost full" | send-sms +4915123456789
+#
+# Needs curl and jq. Reads the key from CURLSMS_API_KEY.
+set -euo pipefail
+
+usage() { echo "Usage: send-sms <receiver> [text]   (text from stdin if omitted)" >&2; exit 2; }
+[[ $# -ge 1 ]] || usage
+: "${CURLSMS_API_KEY:?Set CURLSMS_API_KEY to a key from https://curl-sms.com/app/keys}"
+command -v jq >/dev/null || { echo "send-sms: jq is required" >&2; exit 2; }
+
+receiver=$1
+if [[ $# -ge 2 ]]; then text=$2; else text=$(cat); fi
+[[ -n $text ]] || usage
+
+# jq builds the JSON, so quotes, umlauts and line breaks are always escaped correctly.
+payload=$(jq -n --arg r "$receiver" --arg b "$text" '{receiver: $r, body: $b}')
+
+response=$(curl -sS -w '\n%{http_code}' -X POST https://curl-sms.com/api/sms/send \
+  -H "Authorization: Bearer $CURLSMS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Accept-Language: en" \
+  -d "$payload")
+status=${response##*$'\n'}
+body=${response%$'\n'*}
+
+if [[ $status != 202 ]]; then
+  echo "send-sms: $status $(jq -r '.error.code + ": " + .error.message' <<<"$body")" >&2
+  exit 1
+fi
+jq -r '"\(.id) \(.status)"' <<<"$body"

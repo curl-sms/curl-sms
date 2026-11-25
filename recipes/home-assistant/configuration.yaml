@@ -1,0 +1,12 @@
+# Add to configuration.yaml, then restart Home Assistant.
+# secrets.yaml:  curlsms_auth: "Bearer cs_test_…"
+rest_command:
+  send_sms:
+    url: https://curl-sms.com/api/sms/send
+    method: post
+    headers:
+      authorization: !secret curlsms_auth
+      accept-language: en
+    content_type: application/json
+    payload: '{{ {"receiver": receiver, "body": message} | to_json }}'
+    timeout: 15

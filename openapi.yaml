@@ -1,0 +1,901 @@
+openapi: 3.1.0
+info:
+  title: curl-sms API
+  version: "1.0.0"
+  summary: Send SMS with a single HTTP request.
+  description: |
+    Public API of curl-sms. Authenticate with `Authorization: Bearer <key>`.
+    Live keys start with `cs_live_`, test keys with `cs_test_`. Test keys run
+    through all checks but are never sent; their status changes are
+    simulated (`sent`, then `delivered`) and nothing is charged.
+
+    Errors always have the shape `{"error":{"code":"…","message":"…"}}`. The
+    message follows `Accept-Language` (`de` or `en`, default `de`).
+  x-description-de: |
+    Öffentliche API von curl-sms. Authentifizierung per `Authorization: Bearer <key>`.
+    Live-Keys beginnen mit `cs_live_`, Test-Keys mit `cs_test_`. Test-Keys durchlaufen
+    alle Prüfungen, werden aber nie gesendet; ihr Status wechselt simuliert
+    (`sent`, dann `delivered`), und es wird nichts berechnet.
+
+    Fehler haben immer die Form `{"error":{"code":"…","message":"…"}}`. Der Text folgt
+    `Accept-Language` (`de` oder `en`, Standard `de`).
+  contact:
+    name: curl-sms
+    email: help@curl-sms.com
+    url: https://curl-sms.com/docs
+  license:
+    name: MIT (this document)
+    identifier: MIT
+  termsOfService: https://curl-sms.com/terms
+servers:
+  - url: https://curl-sms.com
+security:
+  - bearerAuth: []
+tags:
+  - name: sms
+    description: Send, query and cancel SMS.
+    x-description-de: SMS senden, abfragen und stornieren.
+  - name: account
+    description: Plan, quota, balance and limits.
+    x-description-de: Tarif, Kontingent, Guthaben und Limits.
+  - name: meta
+    description: Health check and this description.
+    x-description-de: Lebenszeichen und diese Beschreibung.
+
+paths:
+  /api/sms/send:
+    post:
+      operationId: sendSms
+      tags: [sms]
+      summary: Send an SMS
+      x-summary-de: SMS senden
+      description: |
+        Sends one SMS (`receiver`) or the same text to up to 100 receivers
+        (`receivers`). Numbers without a country code are read as German
+        numbers. Only mobile numbers are allowed. With `send_at` the SMS is
+        scheduled (at most one year ahead). Repeat a request with the same
+        `Idempotency-Key` within 24 hours to get the same response without
+        sending twice.
+      x-description-de: |
+        Sendet eine SMS (`receiver`) oder denselben Text an bis zu 100 Empfänger
+        (`receivers`). Nummern ohne Ländervorwahl gelten als deutsche Nummern. Erlaubt
+        sind nur Mobilnummern. Mit `send_at` wird die SMS geplant (höchstens ein Jahr im
+        Voraus). Wiederholst du eine Anfrage innerhalb von 24 Stunden mit demselben
+        `Idempotency-Key`, bekommst du dieselbe Antwort, und es wird nicht erneut gesendet.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/AcceptLanguage"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendRequest"
+            examples:
+              single:
+                summary: One receiver
+                value:
+                  receiver: "+4915123456789"
+                  body: Hallo
+              many:
+                summary: Several receivers, scheduled
+                value:
+                  receivers: ["+4915123456789", "+4917612345678"]
+                  body: Server backup finished.
+                  send_at: "2026-12-01T08:00:00+01:00"
+      responses:
+        "202":
+          description: Accepted. The SMS is queued or scheduled.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/Message"
+                  - $ref: "#/components/schemas/SendManyResponse"
+              examples:
+                single:
+                  value:
+                    id: 01JDQ8M3V6R1T5ZK2X9N4C7B0A
+                    mode: live
+                    receiver: "+4915123456789"
+                    status: queued
+                    segments: 1
+                    encoding: gsm7
+                    price: "0.00"
+                    error_code: null
+                    created_at: "2026-11-23T10:15:00.000Z"
+                    send_at: null
+                    sent_at: null
+                    delivered_at: null
+                    refunded: false
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "402":
+          $ref: "#/components/responses/PaymentRequired"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/sms/estimate:
+    post:
+      operationId: estimateSms
+      tags: [sms]
+      summary: Estimate parts, encoding and price
+      x-summary-de: Teile, Kodierung und Preis berechnen
+      description: |
+        Calculates encoding, number of parts and price without sending. With
+        `receiver`, the response also says whether the SMS would be allowed
+        right now and, if not, why (`code`).
+      x-description-de: |
+        Berechnet Kodierung, Anzahl der Teile und Preis, ohne zu senden. Mit `receiver`
+        sagt die Antwort zusätzlich, ob die SMS jetzt erlaubt wäre, und falls nicht,
+        warum (`code`).
+      parameters:
+        - $ref: "#/components/parameters/AcceptLanguage"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                receiver:
+                  type: string
+                  description: Optional receiver for the price and permission check.
+                  examples: ["+4915123456789"]
+                body:
+                  type: string
+                  description: SMS text (UTF-8, at most 10 parts).
+            example:
+              receiver: "+4915123456789"
+              body: Grüße aus Brühl 👋
+      responses:
+        "200":
+          description: Estimate.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Estimate"
+              example:
+                encoding: ucs2
+                segments: 1
+                price: "0.00"
+                allowed: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /api/sms:
+    get:
+      operationId: listSms
+      tags: [sms]
+      summary: List SMS or changes since a cursor
+      x-summary-de: SMS auflisten oder Änderungen seit einem Cursor
+      description: |
+        Lists the SMS of the key's mode (live or test), ordered by last change.
+        Pass `next_cursor` from the previous response as `since` to get only
+        what changed afterwards (polling). Changes appear with up to 5 seconds
+        delay.
+      x-description-de: |
+        Listet die SMS im Modus des Keys (live oder test), sortiert nach letzter
+        Änderung. Gib `next_cursor` aus der vorigen Antwort als `since` mit, um nur
+        spätere Änderungen zu bekommen (Polling). Änderungen erscheinen mit bis zu
+        5 Sekunden Verzögerung.
+      parameters:
+        - name: since
+          in: query
+          description: Cursor from `next_cursor`.
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Only SMS with this status.
+          schema:
+            $ref: "#/components/schemas/Status"
+        - name: limit
+          in: query
+          description: Page size (1–500, default 100).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        "200":
+          description: Page of SMS.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, next_cursor]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Message"
+                  next_cursor:
+                    type: string
+                    description: Pass as `since` in the next call.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /api/sms/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID of the SMS (from the send response).
+        schema:
+          type: string
+          examples: ["01JDQ8M3V6R1T5ZK2X9N4C7B0A"]
+    get:
+      operationId: getSms
+      tags: [sms]
+      summary: Get the status of an SMS
+      x-summary-de: Status einer SMS abfragen
+      responses:
+        "200":
+          description: The SMS.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    delete:
+      operationId: cancelSms
+      tags: [sms]
+      summary: Cancel a scheduled SMS or delete its text
+      x-summary-de: Geplante SMS stornieren oder Text löschen
+      description: |
+        A scheduled or queued SMS is canceled and refunded. For all other SMS
+        only the text is deleted; the status stays. An SMS that is being handed
+        to the network right now (`dispatched`) cannot be canceled (409).
+      x-description-de: |
+        Eine geplante oder wartende SMS wird storniert und erstattet. Bei allen anderen
+        wird nur der Text gelöscht, der Status bleibt. Eine SMS, die gerade an das Netz
+        geht (`dispatched`), lässt sich nicht stornieren (409).
+      responses:
+        "200":
+          description: The SMS after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /api/account:
+    get:
+      operationId: getAccount
+      tags: [account]
+      summary: Plan, quota, balance and limits
+      x-summary-de: Tarif, Kontingent, Guthaben und Limits
+      responses:
+        "200":
+          description: Current account state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+              example:
+                plan: paid
+                mode: live
+                included_total: 300
+                included_left: 287
+                balance: "12.40"
+                spend_limit: "10.00"
+                spent: "0.18"
+                daily_limit: 500
+                daily_left: 488
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /api/health:
+    get:
+      operationId: health
+      tags: [meta]
+      summary: Health check
+      x-summary-de: Lebenszeichen
+      security: []
+      responses:
+        "200":
+          description: The server is running.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, version]
+                properties:
+                  ok:
+                    type: boolean
+                  version:
+                    type: string
+        "503":
+          description: The database is unreachable.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    const: false
+                  version:
+                    type: string
+
+  /api/openapi.json:
+    get:
+      operationId: openapi
+      tags: [meta]
+      summary: This description as JSON
+      x-summary-de: Diese Beschreibung als JSON
+      security: []
+      responses:
+        "200":
+          description: OpenAPI 3.1 document.
+          content:
+            application/json:
+              schema:
+                type: object
+
+webhooks:
+  sms.status_changed:
+    post:
+      operationId: webhookSmsStatusChanged
+      summary: Status of an SMS changed
+      x-summary-de: Status einer SMS hat sich geändert
+      description: |
+        Sent for every status change of a live or test SMS. Delivery is
+        at-least-once: deduplicate on `X-CurlSMS-Event-Id`.
+      x-description-de: |
+        Kommt bei jeder Statusänderung einer Live- oder Test-SMS. Die Zustellung ist
+        at-least-once: dedupliziere über `X-CurlSMS-Event-Id`.
+      parameters:
+        - $ref: "#/components/parameters/WebhookSignature"
+        - $ref: "#/components/parameters/WebhookEventId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/WebhookEnvelope"
+                - type: object
+                  properties:
+                    type:
+                      const: sms.status_changed
+                    data:
+                      $ref: "#/components/schemas/StatusChanged"
+            example:
+              id: evt_01JDQ8P2K9W3E6Y1M4T7Z0R5C8
+              type: sms.status_changed
+              created: 1763892907
+              data:
+                id: 01JDQ8M3V6R1T5ZK2X9N4C7B0A
+                status: delivered
+                at: "2026-11-23T10:15:07.123Z"
+      responses:
+        "200":
+          $ref: "#/components/responses/WebhookAck"
+  billing.quota_warning:
+    post:
+      operationId: webhookQuotaWarning
+      summary: Included SMS 50, 75 or 100 % used
+      x-summary-de: Inklusiv-SMS zu 50, 75 oder 100 % verbraucht
+      parameters:
+        - $ref: "#/components/parameters/WebhookSignature"
+        - $ref: "#/components/parameters/WebhookEventId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/WebhookEnvelope"
+                - type: object
+                  properties:
+                    type:
+                      const: billing.quota_warning
+                    data:
+                      type: object
+                      required: [pct, used, included, period_start]
+                      properties:
+                        pct:
+                          type: integer
+                          enum: [50, 75, 100]
+                        used:
+                          type: integer
+                        included:
+                          type: integer
+                        period_start:
+                          type: string
+                          format: date-time
+      responses:
+        "200":
+          $ref: "#/components/responses/WebhookAck"
+  billing.spend_limit_reached:
+    post:
+      operationId: webhookSpendLimitReached
+      summary: Monthly spend limit reached
+      x-summary-de: Monatliches Ausgabenlimit erreicht
+      parameters:
+        - $ref: "#/components/parameters/WebhookSignature"
+        - $ref: "#/components/parameters/WebhookEventId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/WebhookEnvelope"
+                - type: object
+                  properties:
+                    type:
+                      const: billing.spend_limit_reached
+                    data:
+                      type: object
+                      required: [spent_cents, limit_cents, period_start]
+                      properties:
+                        spent_cents:
+                          type: integer
+                        limit_cents:
+                          type: integer
+                        period_start:
+                          type: string
+                          format: date-time
+      responses:
+        "200":
+          $ref: "#/components/responses/WebhookAck"
+  billing.balance_low:
+    post:
+      operationId: webhookBalanceLow
+      summary: Prepaid balance is running low
+      x-summary-de: Guthaben wird knapp
+      parameters:
+        - $ref: "#/components/parameters/WebhookSignature"
+        - $ref: "#/components/parameters/WebhookEventId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/WebhookEnvelope"
+                - type: object
+                  properties:
+                    type:
+                      const: billing.balance_low
+                    data:
+                      type: object
+                      required: [balance_cents, period_start]
+                      properties:
+                        balance_cents:
+                          type: integer
+                        period_start:
+                          type: string
+                          format: date-time
+      responses:
+        "200":
+          $ref: "#/components/responses/WebhookAck"
+  webhook.test:
+    post:
+      operationId: webhookTest
+      summary: Test event from the dashboard
+      x-summary-de: Testereignis aus dem Dashboard
+      parameters:
+        - $ref: "#/components/parameters/WebhookSignature"
+        - $ref: "#/components/parameters/WebhookEventId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/WebhookEnvelope"
+                - type: object
+                  properties:
+                    type:
+                      const: webhook.test
+                    data:
+                      type: object
+                      properties:
+                        message:
+                          type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/WebhookAck"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: API key from the dashboard (`cs_live_…` or `cs_test_…`).
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Printable ASCII, 1–255 characters. Same key and same request within 24 h returns the stored response.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+    AcceptLanguage:
+      name: Accept-Language
+      in: header
+      required: false
+      description: Language of error messages (`de` or `en`, default `de`).
+      schema:
+        type: string
+        examples: ["en"]
+    WebhookSignature:
+      name: X-CurlSMS-Signature
+      in: header
+      required: true
+      description: |
+        `t=<unix seconds>,v1=<hex>`. `v1` is HMAC-SHA256 over `<t>.<raw body>`
+        with the endpoint secret (`whsec_…`). Reject old timestamps (replay).
+      schema:
+        type: string
+        examples: ["t=1763892907,v1=5257a869e7ecebeda32affa62cdca3fa51cad7e77a0e56ff536d0ce8e108d8bd"]
+    WebhookEventId:
+      name: X-CurlSMS-Event-Id
+      in: header
+      required: true
+      description: Event ID (same as `id` in the body). Delivery is at-least-once; deduplicate on it.
+      schema:
+        type: string
+        examples: ["evt_01JDQ8P2K9W3E6Y1M4T7Z0R5C8"]
+
+  responses:
+    Unauthorized:
+      description: API key missing or invalid (`unauthorized`).
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: unauthorized
+              message: API key missing or invalid.
+    PaymentRequired:
+      description: Balance and included SMS used up (`insufficient_balance`) or monthly spend limit reached (`spend_limit`). Nothing is charged afterwards.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: insufficient_balance
+              message: Balance and included SMS are used up.
+    Forbidden:
+      description: Destination not allowed (`destination_blocked`, `free_zone_only`, `stop_listed`), account suspended (`suspended`) or live sending not yet unlocked (`verification_required`; complete the profile and confirm the mobile number by SMS code in the dashboard under /app/profile; test keys are not affected).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: verification_required
+              message: "Before sending live: complete your profile and confirm your mobile number with the SMS code (dashboard → Profile, /app/profile). Test sends remain possible."
+    NotFound:
+      description: Not found (`not_found`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: Idempotent request still running (`idempotency_in_progress`) or SMS no longer cancelable (`not_cancelable`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    PayloadTooLarge:
+      description: Request larger than 1 MiB (`payload_too_large`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unprocessable:
+      description: Invalid input, for example `invalid_receiver`, `ambiguous_receiver` (digits only without +, 00 or leading 0), `body_empty`, `body_too_long`. With `receivers`, `index` names the failing entry.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: invalid_receiver
+              message: Invalid receiver number.
+              index: 1
+    TooManyRequests:
+      description: Rate limit per key (`rate_limited`, see `Retry-After`) or daily limit (`daily_limit`).
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Internal:
+      description: Internal error. Quote `error_id` when you contact support.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: internal
+              message: Internal error.
+              error_id: 01JDQ8R0A1B2C3D4E5F6G7H8J9
+    WebhookAck:
+      description: Any 2xx confirms receipt. Other answers or timeouts are retried (8 attempts over about 24 h).
+
+  schemas:
+    Status:
+      type: string
+      description: |
+        `scheduled` → `queued` → `dispatched` → `sent` → `delivered`; also `failed`
+        (refunded automatically), `expired` (no delivery report after 72 h, counts as sent;
+        or `error_code` `queue_timeout`: not sent within 24 h, refunded)
+        and `canceled`. `delivered` comes from the network's delivery report and is
+        only set where the network provides one; rely on `sent`.
+      enum: [scheduled, queued, dispatched, sent, delivered, failed, expired, canceled]
+
+    SendRequest:
+      type: object
+      required: [body]
+      description: Either `receiver` or `receivers`, not both.
+      properties:
+        receiver:
+          type: string
+          description: Mobile number, ideally E.164 (`+49…`). Without country code it is read as German.
+          examples: ["+4915123456789"]
+        receivers:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: string
+        body:
+          type: string
+          description: Text, UTF-8. GSM-7 parts have 160 characters (153 when split), Unicode parts 70 (67). At most 10 parts.
+        send_at:
+          type: string
+          format: date-time
+          description: RFC 3339. Later than now and at most one year ahead.
+
+    SendManyResponse:
+      type: object
+      required: [ids, messages]
+      properties:
+        ids:
+          type: array
+          items:
+            type: string
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Message"
+
+    Message:
+      type: object
+      required: [id, mode, receiver, status, segments, encoding, price, error_code, created_at, send_at, sent_at, delivered_at, refunded]
+      properties:
+        id:
+          type: string
+          description: ULID.
+        mode:
+          type: string
+          enum: [live, test]
+        receiver:
+          type: string
+          description: E.164. Empty after account deletion.
+        status:
+          $ref: "#/components/schemas/Status"
+        segments:
+          type: integer
+          description: Number of SMS parts.
+        encoding:
+          type: string
+          enum: [gsm7, ucs2]
+        price:
+          type: string
+          description: Charged from the balance in euros (`"0.00"` for included SMS and test keys).
+          examples: ["0.09"]
+        error_code:
+          type: [string, "null"]
+          description: |
+            Reason if the SMS failed or expired; `null` otherwise.
+
+            | Value | Meaning |
+            |---|---|
+            | `send_unknown` | Outcome unknown: possibly delivered, not to be resent automatically. Refunded. |
+            | `send_failed:cms_<n>` | The mobile network rejected the SMS (`<n>` = network error). |
+            | `send_failed` | The SMS could not be sent (no detail). |
+            | `modem_error` | Temporary sending error. |
+            | `encode_error` | The SMS could not be encoded (for example an invalid number). |
+            | `delivery_failed:<n>` | The network reported non-delivery (`<n>` = delivery report status). |
+            | `dispatch_timeout` | Sending was not confirmed in three attempts. |
+            | `no_body` | The text is missing. |
+            | `parts_mismatch` | The part count does not match the text. |
+            | `queue_timeout` | Status `expired`: could not be sent within 24 hours. Refunded. |
+        refunded:
+          type: boolean
+          description: |
+            `true` if the price was credited back (`failed`, `canceled`, or `expired` with
+            `queue_timeout`). `price` always stays the original amount.
+        created_at:
+          type: string
+          format: date-time
+        send_at:
+          type: [string, "null"]
+          format: date-time
+        sent_at:
+          type: [string, "null"]
+          format: date-time
+        delivered_at:
+          type: [string, "null"]
+          format: date-time
+
+    Estimate:
+      type: object
+      required: [encoding, segments, price, allowed]
+      properties:
+        encoding:
+          type: string
+          enum: [gsm7, ucs2]
+        segments:
+          type: integer
+        price:
+          type: string
+        allowed:
+          type: boolean
+        code:
+          type: string
+          description: Error code if `allowed` is false.
+
+    Account:
+      type: object
+      required: [plan, mode, included_total, included_left, balance, spend_limit, spent, daily_limit, daily_left]
+      properties:
+        plan:
+          type: string
+          examples: ["free", "paid"]
+        mode:
+          type: string
+          enum: [live, test]
+        included_total:
+          type: integer
+        included_left:
+          type: integer
+        balance:
+          type: string
+          description: Prepaid balance in euros.
+        spend_limit:
+          type: string
+          description: Monthly cap on balance use in euros (`"0.00"` = no balance use).
+        spent:
+          type: string
+          description: Balance used in the current period.
+        daily_limit:
+          type: integer
+        daily_left:
+          type: integer
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              $ref: "#/components/schemas/ErrorCode"
+            message:
+              type: string
+            index:
+              type: integer
+              description: Position in `receivers` that caused the error.
+            error_id:
+              type: string
+              description: Only for `internal`.
+
+    ErrorCode:
+      type: string
+      enum:
+        - unauthorized
+        - invalid_json
+        - invalid_receiver
+        - ambiguous_receiver
+        - body_empty
+        - body_invalid_utf8
+        - body_too_long
+        - too_many_receivers
+        - send_at_out_of_range
+        - invalid_idempotency_key
+        - idempotency_key_mismatch
+        - idempotency_in_progress
+        - invalid_cursor
+        - payload_too_large
+        - not_found
+        - not_cancelable
+        - rate_limited
+        - daily_limit
+        - destination_blocked
+        - free_zone_only
+        - stop_listed
+        - suspended
+        - verification_required
+        - insufficient_balance
+        - spend_limit
+        - internal
+
+    WebhookEnvelope:
+      type: object
+      required: [id, type, created, data]
+      properties:
+        id:
+          type: string
+          description: Event ID, same as `X-CurlSMS-Event-Id`.
+        type:
+          type: string
+          enum: [sms.status_changed, billing.quota_warning, billing.spend_limit_reached, billing.balance_low, webhook.test]
+        created:
+          type: integer
+          description: Unix seconds.
+        data:
+          type: object
+
+    StatusChanged:
+      type: object
+      required: [id, status, at]
+      properties:
+        id:
+          type: string
+          description: ID of the SMS.
+        status:
+          $ref: "#/components/schemas/Status"
+        error_code:
+          type: string
+          description: Only set on errors.
+        at:
+          type: string
+          format: date-time
