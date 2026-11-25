@@ -15,7 +15,8 @@
   <a href="https://curl-sms.com">Website</a> ·
   <a href="https://curl-sms.com/docs">Docs</a> ·
   <a href="https://curl-sms.com/docs/api">API reference</a> ·
-  <a href="https://curl-sms.com/pricing">Pricing</a>
+  <a href="https://curl-sms.com/pricing">Pricing</a> ·
+  <a href="https://curl-sms.com/integrations">Integrations</a>
 </p>
 
 ---
@@ -79,6 +80,8 @@ Every example reads the key from `CURLSMS_API_KEY` and uses the example number `
 | Node.js / TypeScript | `npm install curl-sms` | [curl-sms/curl-sms-node](https://github.com/curl-sms/curl-sms-node) |
 | GitHub Actions | `uses: curl-sms/send-sms@v1` | [curl-sms/send-sms](https://github.com/curl-sms/send-sms) |
 | AI assistants (MCP) | `https://curl-sms.com/mcp` | [curl-sms/curl-sms-mcp](https://github.com/curl-sms/curl-sms-mcp) |
+
+Docs: [Python](https://curl-sms.com/docs/python) · [Node.js](https://curl-sms.com/docs/node) · [GitHub Action](https://curl-sms.com/docs/github-action) · [MCP](https://curl-sms.com/docs/mcp). Also available as a [Synology app](https://curl-sms.com/docs/nas-app) and a [self-hosted bridge for Docker](https://curl-sms.com/docs/bridge); see [all integrations](https://curl-sms.com/integrations).
 
 Any other language works too: generate a client from [`openapi.yaml`](openapi.yaml) or call the API with your HTTP library.
 
